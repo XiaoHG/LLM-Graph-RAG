@@ -1,2 +1,1 @@
-"""Stage4 Graph-RAG scaffold."""
-
+"""Graph-RAG scaffold."""

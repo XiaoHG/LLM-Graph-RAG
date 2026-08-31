@@ -42,7 +42,10 @@
   },
   "total_risk": {
     "score": 0.75,
-    "level": "高风险"
+    "level": "高风险",
+    "basis": [
+      "综合评估"
+    ]
   },
   "exclusion": {
     "excluded_diseases": [

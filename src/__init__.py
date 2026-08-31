@@ -1,1 +1,1 @@
-"""Stage4: report generation and Graph-RAG."""
+"""Report generation and graph integration."""
