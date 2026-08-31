@@ -1,0 +1,69 @@
+{
+  "anatomy_site": "前臂",
+  "site_confidence": 0.96,
+  "feature_detail": [
+    {
+      "feat_name": "尺桡骨间膜骨化",
+      "model_prob": 0.88,
+      "evidence_level": "强证据",
+      "is_counter_evidence": false,
+      "is_legal_for_site": true
+    },
+    {
+      "feat_name": "骨质增生",
+      "model_prob": 0.73,
+      "evidence_level": "中证据",
+      "is_counter_evidence": false,
+      "is_legal_for_site": true
+    },
+    {
+      "feat_name": "肾性骨病",
+      "model_prob": 0.12,
+      "evidence_level": "反证",
+      "is_counter_evidence": true,
+      "is_legal_for_site": false
+    }
+  ],
+  "image_risk": {
+    "score": 0.72,
+    "level": "高风险",
+    "basis": [
+      "尺桡骨间膜骨化（强证据）",
+      "骨质增生（中证据）"
+    ]
+  },
+  "exposure_risk": {
+    "score": 0.8,
+    "level": "高暴露",
+    "basis": [
+      "高氟病区居住15年",
+      "长期饮用高氟水"
+    ]
+  },
+  "total_risk": {
+    "score": 0.75,
+    "level": "高风险"
+  },
+  "exclusion": {
+    "excluded_diseases": [
+      "肾性骨病"
+    ],
+    "remaining_differential": [
+      "骨质疏松",
+      "退行性骨关节病"
+    ]
+  },
+  "missing_evidence": [
+    "脊柱影像"
+  ],
+  "uncertainty": {
+    "total_score": 0.35,
+    "level": "中等",
+    "perception_score": 0.22,
+    "cognitive_score": 0.44,
+    "reasons": [
+      "缺少脊柱影像，无法评估重度征象",
+      "部分征象预测置信度存在波动"
+    ]
+  }
+}
