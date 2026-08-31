@@ -8,4 +8,5 @@ build/
 references/
 .codex/
 neo4j/
+AGENTS.md
 

@@ -4,12 +4,6 @@
 - This repository is for the fluorosis intelligent diagnosis paper scaffold.
 - Current focus: `Stage4` only.
 
-## Layout
-- `src/`: Stage4 code modules
-- `configs/`: runtime config
-- `tests/`: minimal verification
-- `references/`: source materials and artifacts
-
 ## Rules
 - Keep changes minimal and scoped.
 - Do not implement non-Stage4 logic unless explicitly requested.
@@ -18,3 +12,9 @@
 ## Verification
 - Prefer small, direct checks after edits.
 
+## Project Structure
+- `src/`: core Stage4 code, including the Neo4j client, graph retrieval, and report generation modules.
+- `tests/`: unit tests and minimal verification cases for `src/`.
+- `configs/`: runtime configuration files for Stage4.
+- `cli/`: demo scripts and command-line entry points for manual checks.
+- `references/`: source materials and constraint references to check before editing.
