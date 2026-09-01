@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
-import json
-import os
 
 import requests
 
@@ -15,6 +15,7 @@ from schemas import ReportInput, ReportResult
 
 ROOT = Path(__file__).resolve().parents[1]
 PROMPT_DIR = ROOT / "prompt"
+RAG_RESULT_DIR = ROOT / "output" / "rag_result"
 
 
 @dataclass(frozen=True)
@@ -30,10 +31,14 @@ def _load_prompt(name: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def _build_messages(input_data: ReportInput) -> list[dict[str, str]]:
+def _build_messages(input_data: ReportInput, *, rag_context: str = "") -> list[dict[str, str]]:
     payload = json.dumps(input_data.to_dict(), ensure_ascii=False, indent=2)
     system = _load_prompt("report_system.md")
-    user = _load_prompt("report_user.md").replace("{{payload}}", payload)
+    user = (
+        _load_prompt("report_user.md")
+        .replace("{{payload}}", payload)
+        .replace("{{rag_context}}", rag_context or "无")
+    )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
@@ -72,8 +77,8 @@ class DeepSeekReportGenerator:
         )
         return cls(settings)
 
-    def generate(self, input_data: ReportInput) -> ReportResult:
-        messages = _build_messages(input_data)
+    def generate(self, input_data: ReportInput, *, rag_context: str = "") -> ReportResult:
+        messages = _build_messages(input_data, rag_context=rag_context)
         response = requests.post(
             f"{self._settings.base_url.rstrip('/')}/chat/completions",
             headers={
@@ -100,6 +105,16 @@ class DeepSeekReportGenerator:
 
 def load_input(path: str) -> ReportInput:
     return ReportInput.from_json_file(path)
+
+
+def load_latest_rag_result_text(output_dir: Path | str = RAG_RESULT_DIR) -> str:
+    directory = Path(output_dir)
+    if not directory.exists():
+        raise FileNotFoundError(f"rag result directory not found: {directory}")
+    candidates = sorted(directory.glob("rag_*.md"))
+    if not candidates:
+        raise FileNotFoundError(f"rag result markdown not found in: {directory}")
+    return candidates[-1].read_text(encoding="utf-8")
 
 
 def save_result(result: ReportResult, path: str) -> None:

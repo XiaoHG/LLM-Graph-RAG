@@ -82,17 +82,21 @@ def test_generator_builds_request(monkeypatch):
 
     monkeypatch.setattr("report_generator.requests.post", fake_post)
     generator = DeepSeekReportGenerator(DeepSeekSettings(api_key="test-key"))
-    result = generator.generate(ReportInput.from_mapping(sample_input()))
+    result = generator.generate(ReportInput.from_mapping(sample_input()), rag_context="rag markdown")
     assert "前臂影像提示氟骨症相关改变" in result.report_text
     assert captured["url"].endswith("/chat/completions")
     assert captured["json"]["model"] == "deepseek-chat"
     assert captured["timeout"] == 60.0
+    assert "rag markdown" in captured["json"]["messages"][1]["content"]
 
 
 def test_cli_generates_output_file(monkeypatch, tmp_path):
     input_path = tmp_path / "input.json"
     output_path = tmp_path / "output.json"
+    rag_dir = tmp_path / "output" / "rag_result"
     input_path.write_text(json.dumps(sample_input(), ensure_ascii=False), encoding="utf-8")
+    rag_dir.mkdir(parents=True)
+    (rag_dir / "rag_001.md").write_text("rag content", encoding="utf-8")
 
     monkeypatch.setattr(
         "report_generator.requests.post",
@@ -107,6 +111,8 @@ def test_cli_generates_output_file(monkeypatch, tmp_path):
             str(input_path),
             "--output",
             str(output_path),
+            "--rag-result-dir",
+            str(rag_dir),
             "--api-key",
             "test-key",
         ]
@@ -121,10 +127,13 @@ def test_cli_generates_output_file(monkeypatch, tmp_path):
 def test_cli_uses_default_output_name(monkeypatch, tmp_path):
     input_path = tmp_path / "test_data" / "input_example.json"
     output_dir = tmp_path / "output" / "report"
+    rag_dir = tmp_path / "output" / "rag_result"
     input_path.parent.mkdir(parents=True)
     input_path.write_text(json.dumps(sample_input(), ensure_ascii=False), encoding="utf-8")
     output_dir.mkdir(parents=True)
     (output_dir / "report_001.json").write_text("{}", encoding="utf-8")
+    rag_dir.mkdir(parents=True)
+    (rag_dir / "rag_001.md").write_text("rag content", encoding="utf-8")
 
     monkeypatch.setattr("report_generator.requests.post", lambda *args, **kwargs: DummyResponse({"choices": [{"message": {"content": "报告正文"}}]}))
     monkeypatch.setattr("report_demo.ROOT", tmp_path)
