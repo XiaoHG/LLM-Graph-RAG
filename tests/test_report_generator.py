@@ -120,10 +120,10 @@ def test_cli_generates_output_file(monkeypatch, tmp_path):
 
 def test_cli_uses_default_output_name(monkeypatch, tmp_path):
     input_path = tmp_path / "test_data" / "input_example.json"
-    output_dir = tmp_path / "output"
+    output_dir = tmp_path / "output" / "report"
     input_path.parent.mkdir(parents=True)
     input_path.write_text(json.dumps(sample_input(), ensure_ascii=False), encoding="utf-8")
-    output_dir.mkdir()
+    output_dir.mkdir(parents=True)
     (output_dir / "report_001.json").write_text("{}", encoding="utf-8")
 
     monkeypatch.setattr("report_generator.requests.post", lambda *args, **kwargs: DummyResponse({"choices": [{"message": {"content": "报告正文"}}]}))

@@ -49,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="input_example.json",
         help="Path to the input JSON",
     )
-    parser.add_argument("--output", help="Optional output JSON path; defaults to output/report_###.json")
+    parser.add_argument("--output", help="Optional output JSON path; defaults to output/report/report_###.json")
     parser.add_argument("--api-key", default=os.getenv("DEEPSEEK_API_KEY"), help="DeepSeek API key")
     parser.add_argument("--model", default=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"), help="DeepSeek model")
     parser.add_argument(
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         print(exc)
         return 2
 
-    output_path = Path(args.output) if args.output else _next_output_path(ROOT / "output")
+    output_path = Path(args.output) if args.output else _next_output_path(ROOT / "output" / "report")
     save_result(result, str(output_path))
     md_path = _save_report_markdown(output_path, result.report_text)
     print(f"saved: {output_path}")
