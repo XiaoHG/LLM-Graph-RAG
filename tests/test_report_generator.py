@@ -26,6 +26,28 @@ class DummyResponse:
         return self._payload
 
 
+class DummyGraphRAG:
+    def close(self) -> None:
+        return None
+
+    def build_result(self, input_data, *, depth: int = 2):
+        class Result:
+            def __init__(self, text: str) -> None:
+                self._text = text
+
+            def to_markdown(self) -> str:
+                return self._text
+
+        return Result(f"rag:{input_data.anatomy_site}:{depth}")
+
+    def save_result(self, result, output_dir):
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "rag_001.md"
+        output_path.write_text(result.to_markdown(), encoding="utf-8")
+        return output_path
+
+
 def sample_input() -> dict[str, object]:
     return {
         "anatomy_site": "前臂",
@@ -93,10 +115,7 @@ def test_generator_builds_request(monkeypatch):
 def test_cli_generates_output_file(monkeypatch, tmp_path):
     input_path = tmp_path / "input.json"
     output_path = tmp_path / "output.json"
-    rag_dir = tmp_path / "output" / "rag_result"
     input_path.write_text(json.dumps(sample_input(), ensure_ascii=False), encoding="utf-8")
-    rag_dir.mkdir(parents=True)
-    (rag_dir / "rag_001.md").write_text("rag content", encoding="utf-8")
 
     monkeypatch.setattr(
         "report_generator.requests.post",
@@ -104,6 +123,8 @@ def test_cli_generates_output_file(monkeypatch, tmp_path):
             {"choices": [{"message": {"content": "报告正文"}}]}
         ),
     )
+    monkeypatch.setattr("report_demo.GraphRAG.from_env", lambda **kwargs: DummyGraphRAG())
+    monkeypatch.setattr("report_demo.ROOT", tmp_path)
 
     code = report_main(
         [
@@ -111,8 +132,6 @@ def test_cli_generates_output_file(monkeypatch, tmp_path):
             str(input_path),
             "--output",
             str(output_path),
-            "--rag-result-dir",
-            str(rag_dir),
             "--api-key",
             "test-key",
         ]
@@ -122,21 +141,20 @@ def test_cli_generates_output_file(monkeypatch, tmp_path):
     assert payload["report_text"] == "报告正文"
     assert payload["input_data"]["anatomy_site"] == "前臂"
     assert output_path.with_suffix(".md").read_text(encoding="utf-8") == "报告正文"
+    assert (tmp_path / "output" / "rag_result" / "rag_001.md").read_text(encoding="utf-8") == "rag:前臂:2"
 
 
 def test_cli_uses_default_output_name(monkeypatch, tmp_path):
     input_path = tmp_path / "test_data" / "input_example.json"
     output_dir = tmp_path / "output" / "report"
-    rag_dir = tmp_path / "output" / "rag_result"
     input_path.parent.mkdir(parents=True)
     input_path.write_text(json.dumps(sample_input(), ensure_ascii=False), encoding="utf-8")
     output_dir.mkdir(parents=True)
     (output_dir / "report_001.json").write_text("{}", encoding="utf-8")
-    rag_dir.mkdir(parents=True)
-    (rag_dir / "rag_001.md").write_text("rag content", encoding="utf-8")
 
     monkeypatch.setattr("report_generator.requests.post", lambda *args, **kwargs: DummyResponse({"choices": [{"message": {"content": "报告正文"}}]}))
     monkeypatch.setattr("report_demo.ROOT", tmp_path)
+    monkeypatch.setattr("report_demo.GraphRAG.from_env", lambda **kwargs: DummyGraphRAG())
 
     code = report_main(["--api-key", "test-key"])
     assert code == 0

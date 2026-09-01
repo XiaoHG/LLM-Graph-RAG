@@ -13,7 +13,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from report_generator import DeepSeekReportGenerator, load_input, load_latest_rag_result_text, save_result
+from graph_rag import GraphRAG
+from report_generator import DeepSeekReportGenerator, load_input, save_result
 
 
 def _resolve_input_path(value: str) -> Path:
@@ -52,11 +53,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", help="Optional output JSON path; defaults to output/report/report_###.json")
     parser.add_argument("--api-key", default=os.getenv("DEEPSEEK_API_KEY"), help="DeepSeek API key")
     parser.add_argument("--model", default=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"), help="DeepSeek model")
-    parser.add_argument(
-        "--rag-result-dir",
-        default=str(ROOT / "output" / "rag_result"),
-        help="Directory containing the latest rag_result markdown",
-    )
+    parser.add_argument("--depth", type=int, default=2, help="Neo4j retrieval depth")
+    parser.add_argument("--feature-label", default="Sign", help="Neo4j label used for imaging signs")
+    parser.add_argument("--disease-label", default="Disease", help="Neo4j label used for diseases")
+    parser.add_argument("--uri", help="Neo4j URI")
+    parser.add_argument("--username", help="Neo4j username")
+    parser.add_argument("--password", help="Neo4j password")
+    parser.add_argument("--database", help="Neo4j database")
     parser.add_argument(
         "--base-url",
         default=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
@@ -73,19 +76,33 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    rag = None
     try:
         input_data = load_input(str(_resolve_input_path(args.input)))
+        rag = GraphRAG.from_env(
+            uri=args.uri,
+            username=args.username,
+            password=args.password,
+            database=args.database,
+            feature_label=args.feature_label,
+            disease_label=args.disease_label,
+        )
         generator = DeepSeekReportGenerator.from_env(
             api_key=args.api_key,
             model=args.model,
             base_url=args.base_url,
             timeout=args.timeout,
         )
-        rag_context = load_latest_rag_result_text(args.rag_result_dir)
+        rag_result = rag.build_result(input_data, depth=args.depth)
+        rag.save_result(rag_result, ROOT / "output" / "rag_result")
+        rag_context = rag_result.to_markdown()
         result = generator.generate(input_data, rag_context=rag_context)
     except (ValueError, FileNotFoundError, json.JSONDecodeError) as exc:
         print(exc)
         return 2
+    finally:
+        if rag is not None:
+            rag.close()
 
     output_path = Path(args.output) if args.output else _next_output_path(ROOT / "output" / "report")
     save_result(result, str(output_path))
