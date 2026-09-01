@@ -206,9 +206,9 @@ def test_render_keeps_duplicate_queries_and_full_node_details() -> None:
     assert "exclusion.excluded_diseases[1]" in text
     assert "尺骨近端骨膜微小增生线 -- LOCATED_AT --> 尺骨" in text
     assert "尺骨近端骨膜微小增生线 <-- HAS_SIGN -- 轻度氟骨症" in text
-    assert "尺骨近端骨膜微小增生线属性：embedText='影像征象：尺骨近端骨膜微小增生线；所属模块：氟骨症X线；分度：早期；是否早期筛查：true；征象描述：骨膜细线状新生骨'" in text
-    assert "尺骨属性：embedText='解剖结构：尺骨；分类：四肢长骨；位置：前臂内侧；模块：骨骼影像分割'" in text
-    assert "关节强直属性：embedText='疾病名称：关节强直；分型模块：氟骨症；分度：无分度；类型：并发症；标准说明：关节僵硬和活动受限'" in text
+    assert "尺骨近端骨膜微小增生线：embedText='影像征象：尺骨近端骨膜微小增生线；所属模块：氟骨症X线；分度：早期；是否早期筛查：true；征象描述：骨膜细线状新生骨'" in text
+    assert "尺骨：embedText='解剖结构：尺骨；分类：四肢长骨；位置：前臂内侧；模块：骨骼影像分割'" in text
+    assert "关节强直：embedText='疾病名称：关节强直；分型模块：氟骨症；分度：无分度；类型：并发症；标准说明：关节僵硬和活动受限'" in text
 
 
 def test_save_result_writes_md_only(tmp_path: Path) -> None:
