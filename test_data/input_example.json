@@ -1,23 +1,30 @@
 {
-  "anatomy_site": "前臂",
+  "anatomy_site": "指骨",
   "site_confidence": 0.96,
   "feature_detail": [
     {
-      "feat_name": "尺桡骨间膜骨化",
+      "feat_name": "尺骨近端骨膜微小增生线",
       "model_prob": 0.88,
       "evidence_level": "强证据",
       "is_counter_evidence": false,
       "is_legal_for_site": true
     },
     {
-      "feat_name": "骨质增生",
+      "feat_name": "重度氟骨症",
       "model_prob": 0.73,
       "evidence_level": "中证据",
       "is_counter_evidence": false,
       "is_legal_for_site": true
     },
+	{
+      "feat_name": "骨质增生",
+      "model_prob": 0.70,
+      "evidence_level": "中证据",
+      "is_counter_evidence": false,
+      "is_legal_for_site": true
+    },
     {
-      "feat_name": "肾性骨病",
+      "feat_name": "关节强直",
       "model_prob": 0.12,
       "evidence_level": "反证",
       "is_counter_evidence": true,
@@ -28,7 +35,7 @@
     "score": 0.72,
     "level": "高风险",
     "basis": [
-      "尺桡骨间膜骨化（强证据）",
+      "重度氟骨症（强证据）",
       "骨质增生（中证据）"
     ]
   },
@@ -49,11 +56,11 @@
   },
   "exclusion": {
     "excluded_diseases": [
-      "肾性骨病"
+      "关节强直"
     ],
     "remaining_differential": [
-      "骨质疏松",
-      "退行性骨关节病"
+      "脊柱侧弯",
+      "氟斑牙"
     ]
   },
   "missing_evidence": [

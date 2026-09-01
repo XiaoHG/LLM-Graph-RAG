@@ -83,11 +83,11 @@ def test_client_fetch_node_count(monkeypatch):
 def test_client_fetch_direct_relations(monkeypatch):
     rows = [
         {
-            "node_name": "桡骨嵴轻度增大",
+            "node_name": "尺桡骨间膜骨化",
             "node_label": "Sign",
             "relation": "INDICATES",
-            "relation_properties": {"source": "WS/T 192—2021"},
-            "related_name": "轻度氟骨症",
+            "relation_properties": {"source": "WS/T 192-2021"},
+            "related_name": "骨质增生",
             "related_label": "Disease",
             "direction": "OUT",
         }
@@ -96,9 +96,27 @@ def test_client_fetch_direct_relations(monkeypatch):
     monkeypatch.setattr("neo4j_client.GraphDatabase.driver", lambda *args, **kwargs: driver)
 
     client = Neo4jClient(Neo4jSettings("bolt://x", "neo4j", "pw", "fluorosis"))
-    result = client.fetch_direct_relations("Sign", "桡骨嵴轻度增大")
+    result = client.fetch_direct_relations("Sign", "尺桡骨间膜骨化")
     assert result == rows
-    assert driver.last_session.calls[0][1] == {"name": "桡骨嵴轻度增大"}
+    assert driver.last_session.calls[0][1] == {"name": "尺桡骨间膜骨化"}
+    client.close()
+
+
+def test_client_fetch_node_details(monkeypatch):
+    rows = [
+        {
+            "node_name": "尺桡骨间膜骨化",
+            "node_label": "Sign",
+            "node_properties": {"name": "尺桡骨间膜骨化", "code": "S001"},
+        }
+    ]
+    driver = DummyDriver(rows=rows)
+    monkeypatch.setattr("neo4j_client.GraphDatabase.driver", lambda *args, **kwargs: driver)
+
+    client = Neo4jClient(Neo4jSettings("bolt://x", "neo4j", "pw", "fluorosis"))
+    result = client.fetch_node_details("Sign", "尺桡骨间膜骨化")
+    assert result["node_name"] == "尺桡骨间膜骨化"
+    assert result["node_properties"] == {"name": "尺桡骨间膜骨化", "code": "S001"}
     client.close()
 
 
@@ -123,3 +141,26 @@ def test_real_database_connectivity():
         assert "Anatomy" in labels
     finally:
         client.close()
+
+
+def test_client_fetch_related_subgraph(monkeypatch):
+    rows = [
+        {
+            "node_name": "尺桡骨间膜骨化",
+            "node_label": "Sign",
+            "relation": "INDICATES",
+            "relation_properties": {"source": "WS/T 192-2021"},
+            "related_name": "骨质增生",
+            "related_label": "Disease",
+            "direction": "OUT",
+        }
+    ]
+    driver = DummyDriver(rows=rows)
+    monkeypatch.setattr("neo4j_client.GraphDatabase.driver", lambda *args, **kwargs: driver)
+
+    client = Neo4jClient(Neo4jSettings("bolt://x", "neo4j", "pw", "fluorosis"))
+    result = client.fetch_related_subgraph("Sign", "尺桡骨间膜骨化", depth=2)
+    assert result["depth"] == 2
+    assert result["root"]["node_name"] == "尺桡骨间膜骨化"
+    assert result["relations"][0]["target_name"] == "骨质增生"
+    client.close()

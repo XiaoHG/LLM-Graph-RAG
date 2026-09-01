@@ -13,14 +13,13 @@ if str(SRC) not in sys.path:
 
 from graph_rag import GraphRAG
 from report_generator import load_input
-import json
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Graph-RAG demo for the fluorosis graph")
     parser.add_argument("--input", help="Path to a Stage4 input JSON")
-    parser.add_argument("--node-label", help="Node label to inspect directly")
-    parser.add_argument("--node-name", help="Node name to inspect directly")
+    parser.add_argument("--depth", type=int, default=2, help="Neo4j retrieval depth")
+    parser.add_argument("--output-dir", default=str(ROOT / "output" / "rag_result"), help="RAG result output directory")
     parser.add_argument("--feature-label", default="Sign", help="Neo4j label used for imaging signs")
     parser.add_argument("--disease-label", default="Disease", help="Neo4j label used for diseases")
     parser.add_argument("--uri", help="Neo4j URI")
@@ -45,19 +44,15 @@ def main(argv: list[str] | None = None) -> int:
         print(exc)
         return 2
     try:
-        if args.input:
-            input_data = load_input(args.input)
-            context = rag.build_context(input_data)
-            background = rag.build_background(input_data)
-            print(json.dumps(context.to_dict(), ensure_ascii=False, indent=2))
-            print()
-            print(background.render())
-            return 0
-        if args.node_label and args.node_name:
-            print(rag.describe_node(args.node_label, args.node_name).to_dict())
-            return 0
-        print("either --input or --node-label/--node-name is required")
-        return 2
+        if not args.input:
+            print("--input is required")
+            return 2
+        input_data = load_input(args.input)
+        result = rag.build_result(input_data, depth=args.depth)
+        output_path = rag.save_result(result, Path(args.output_dir))
+        print(f"saved: {output_path}")
+        print(result.to_markdown())
+        return 0
     finally:
         rag.close()
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from neo4j import GraphDatabase, basic_auth
 
@@ -47,6 +47,26 @@ class Neo4jClient:
         rows = self.run(f"MATCH (n:`{label}`) RETURN count(n) AS count")
         return int(rows[0]["count"]) if rows else 0
 
+    def fetch_node_details(self, label: str, name: str) -> dict[str, Any]:
+        rows = self.run(
+            f"""
+            MATCH (n:`{label}` {{name: $name}})
+            RETURN
+                n.name AS node_name,
+                head(labels(n)) AS node_label,
+                properties(n) AS node_properties
+            """,
+            name=name,
+        )
+        if not rows:
+            return {"node_label": label, "node_name": name, "node_properties": {}}
+        row = rows[0]
+        return {
+            "node_label": row.get("node_label") or label,
+            "node_name": row.get("node_name") or name,
+            "node_properties": row.get("node_properties") or {},
+        }
+
     def fetch_direct_relations(self, label: str, name: str) -> list[dict[str, Any]]:
         rows = self.run(
             f"""
@@ -64,6 +84,106 @@ class Neo4jClient:
             name=name,
         )
         return rows
+
+    def fetch_related_subgraph(
+        self,
+        label: str,
+        name: str,
+        *,
+        depth: int = 2,
+    ) -> dict[str, Any]:
+        if depth < 1:
+            raise ValueError("depth must be >= 1")
+
+        visited: set[tuple[str, str]] = set()
+        queued: set[tuple[str, str]] = {(label, name)}
+        frontier: list[tuple[str, str, int]] = [(label, name, 0)]
+        nodes: dict[tuple[str, str], dict[str, Any]] = {}
+        relations: list[dict[str, Any]] = []
+        details_cache: dict[tuple[str, str], dict[str, Any]] = {}
+
+        def details_for(node_label: str, node_name: str) -> dict[str, Any]:
+            key = (node_label, node_name)
+            if key not in details_cache:
+                details_cache[key] = self.fetch_node_details(node_label, node_name)
+            return details_cache[key]
+
+        while frontier:
+            current_label, current_name, current_depth = frontier.pop(0)
+            current_key = (current_label, current_name)
+            if current_key in visited:
+                continue
+            visited.add(current_key)
+            nodes.setdefault(
+                current_key,
+                {
+                    "node_label": current_label,
+                    "node_name": current_name,
+                    "depth": current_depth,
+                    "node_properties": details_for(current_label, current_name)["node_properties"],
+                },
+            )
+
+            if current_depth >= depth:
+                continue
+
+            for row in self.fetch_direct_relations(current_label, current_name):
+                current_label_value = str(row.get("node_label") or current_label)
+                current_name_value = str(row.get("node_name") or current_name)
+                related_label = str(row.get("related_label") or "Unknown")
+                related_name = str(row.get("related_name") or "-")
+                direction = str(row.get("direction") or "?")
+                if direction == "IN":
+                    source_label = related_label
+                    source_name = related_name
+                    target_label = current_label_value
+                    target_name = current_name_value
+                else:
+                    source_label = current_label_value
+                    source_name = current_name_value
+                    target_label = related_label
+                    target_name = related_name
+                source_key = (source_label, source_name)
+                target_key = (target_label, target_name)
+                relation = {
+                    "source_label": source_label,
+                    "source_name": source_name,
+                    "relation": row.get("relation"),
+                    "relation_properties": row.get("relation_properties") or {},
+                    "target_label": target_label,
+                    "target_name": target_name,
+                    "direction": direction,
+                    "depth": current_depth + 1,
+                }
+                relations.append(relation)
+                nodes.setdefault(
+                    source_key,
+                    {
+                        "node_label": source_label,
+                        "node_name": source_name,
+                        "depth": current_depth,
+                        "node_properties": details_for(source_label, source_name)["node_properties"],
+                    },
+                )
+                nodes.setdefault(
+                    target_key,
+                    {
+                        "node_label": target_label,
+                        "node_name": target_name,
+                        "depth": current_depth + 1,
+                        "node_properties": details_for(target_label, target_name)["node_properties"],
+                    },
+                )
+                if current_depth + 1 < depth and target_key not in visited and target_key not in queued:
+                    frontier.append((str(target_label), str(target_name), current_depth + 1))
+                    queued.add(target_key)
+
+        return {
+            "root": {"node_label": label, "node_name": name, "depth": 0},
+            "depth": depth,
+            "nodes": sorted(nodes.values(), key=lambda item: (item["depth"], item["node_label"], item["node_name"])),
+            "relations": relations,
+        }
 
 
 def build_neo4j_client_from_env(

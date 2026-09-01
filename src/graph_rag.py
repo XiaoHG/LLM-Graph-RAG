@@ -2,65 +2,100 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from typing import Any, Iterable
-import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Mapping
 
 from neo4j_client import Neo4jClient, build_neo4j_client_from_env
-from schemas import ExclusionSummary, FeatureDetail, ReportInput, RiskSummary, UncertaintySummary
+from schemas import ReportInput
 
 
 GraphRAGContext = ReportInput
 
 
-def _unique_preserve_order(values: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        ordered.append(value)
-    return ordered
+def _format_properties(properties: Mapping[str, Any] | None) -> str:
+    if not properties:
+        return ""
+    return ", ".join(f"{key}={value!r}" for key, value in properties.items())
 
 
 @dataclass(frozen=True)
 class GraphNodeContext:
+    source_field: str
     node_label: str
     node_name: str
+    depth: int
     node_count: int
-    direct_relations: list[dict[str, Any]] = field(default_factory=list)
+    subgraph: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+    def _render_relation_line(self, relation: Mapping[str, Any]) -> str | None:
+        source_label = str(relation.get("source_label") or "")
+        source_name = str(relation.get("source_name") or "")
+        target_label = str(relation.get("target_label") or "")
+        target_name = str(relation.get("target_name") or "")
+        relation_type = str(relation.get("relation") or "?")
+        current_key = (self.node_label, self.node_name)
+
+        if current_key == (source_label, source_name):
+            return f"{source_name} -- {relation_type} --> {target_name}"
+        if current_key == (target_label, target_name):
+            return f"{target_name} <-- {relation_type} -- {source_name}"
+        return f"{source_name} -- {relation_type} --> {target_name}"
+
+    def render_block(self) -> list[str]:
+        lines = [self.source_field]
+        for relation in self.subgraph.get("relations") or []:
+            rendered = self._render_relation_line(relation)
+            if rendered:
+                lines.append(rendered)
+
+        seen_nodes: set[tuple[str, str]] = set()
+        for node in self.subgraph.get("nodes") or []:
+            node_label = str(node.get("node_label") or "")
+            node_name = str(node.get("node_name") or "")
+            node_key = (node_label, node_name)
+            if node_key in seen_nodes:
+                continue
+            seen_nodes.add(node_key)
+            rendered = _format_properties(node.get("node_properties") or {})
+            lines.append(f"{node_name}：{rendered}" if rendered else f"{node_name}：")
+        return lines
 
 
 @dataclass(frozen=True)
 class GraphBackgroundContext:
+    depth: int
     feature_nodes: list[GraphNodeContext]
     disease_nodes: list[GraphNodeContext]
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "feature_nodes": [item.to_dict() for item in self.feature_nodes],
-            "disease_nodes": [item.to_dict() for item in self.disease_nodes],
-        }
-
     def render(self) -> str:
         lines: list[str] = []
-        for section_name, nodes in (("feature_nodes", self.feature_nodes), ("disease_nodes", self.disease_nodes)):
-            if not nodes:
-                continue
-            lines.append(section_name)
+        for nodes in (self.feature_nodes, self.disease_nodes):
             for node in nodes:
-                lines.append(f"- {node.node_label}: {node.node_name} ({node.node_count})")
-                for relation in node.direct_relations:
-                    related_name = relation.get("related_name") or "-"
-                    related_label = relation.get("related_label") or "-"
-                    direction = relation.get("direction") or "?"
-                    rel_type = relation.get("relation") or "?"
-                    lines.append(f"  - [{direction}] {rel_type} -> {related_name} ({related_label})")
+                lines.extend(node.render_block())
+                lines.append("")
+        if lines and lines[-1] == "":
+            lines.pop()
         return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class GraphRAGResult:
+    input_data: ReportInput
+    background: GraphBackgroundContext
+
+    def to_markdown(self) -> str:
+        return self.background.render()
+
+
+def _next_output_path(output_dir: Path, stem: str) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    index = 1
+    while True:
+        candidate = output_dir / f"{stem}_{index:03d}.md"
+        if not candidate.exists():
+            return candidate
+        index += 1
 
 
 class GraphRAG:
@@ -104,21 +139,26 @@ class GraphRAG:
     def build_context(self, input_data: ReportInput) -> GraphRAGContext:
         return input_data
 
-    def describe_node(
+    def _build_node_context(
         self,
         node_label: str,
         node_name: str,
+        depth: int,
+        node_count: int,
         *,
-        node_count: int | None = None,
+        source_field: str,
     ) -> GraphNodeContext:
+        subgraph = self._client.fetch_related_subgraph(node_label, node_name, depth=depth)
         return GraphNodeContext(
+            source_field=source_field,
             node_label=node_label,
             node_name=node_name,
-            node_count=node_count if node_count is not None else self._client.fetch_node_count(node_label),
-            direct_relations=self._client.fetch_direct_relations(node_label, node_name),
+            depth=depth,
+            node_count=node_count,
+            subgraph=subgraph,
         )
 
-    def build_background(self, input_data: ReportInput) -> GraphBackgroundContext:
+    def build_background(self, input_data: ReportInput, *, depth: int = 2) -> GraphBackgroundContext:
         node_count_cache: dict[str, int] = {}
 
         def node_count_for(label: str) -> int:
@@ -126,22 +166,35 @@ class GraphRAG:
                 node_count_cache[label] = self._client.fetch_node_count(label)
             return node_count_cache[label]
 
-        feature_names = _unique_preserve_order(item.feat_name for item in input_data.feature_detail)
-        disease_names = _unique_preserve_order(input_data.exclusion.excluded_diseases)
-
         feature_nodes = [
-            self.describe_node(self._feature_label, name, node_count=node_count_for(self._feature_label))
-            for name in feature_names
+            self._build_node_context(
+                self._feature_label,
+                item.feat_name,
+                depth,
+                node_count_for(self._feature_label),
+                source_field=f"feature_detail[{index}]:feat_name",
+            )
+            for index, item in enumerate(input_data.feature_detail)
         ]
         disease_nodes = [
-            self.describe_node(self._disease_label, name, node_count=node_count_for(self._disease_label))
-            for name in disease_names
+            self._build_node_context(
+                self._disease_label,
+                name,
+                depth,
+                node_count_for(self._disease_label),
+                source_field=f"exclusion.excluded_diseases[{index}]",
+            )
+            for index, name in enumerate(input_data.exclusion.excluded_diseases)
         ]
-        return GraphBackgroundContext(feature_nodes=feature_nodes, disease_nodes=disease_nodes)
+        return GraphBackgroundContext(depth=depth, feature_nodes=feature_nodes, disease_nodes=disease_nodes)
 
-    def build_prompt_context(self, input_data: ReportInput) -> str:
-        payload = json.dumps(self.build_context(input_data).to_dict(), ensure_ascii=False, indent=2)
-        background = self.build_background(input_data).render()
-        if not background:
-            return payload
-        return payload + "\n\n" + background
+    def build_result(self, input_data: ReportInput, *, depth: int = 2) -> GraphRAGResult:
+        return GraphRAGResult(input_data=input_data, background=self.build_background(input_data, depth=depth))
+
+    def build_prompt_context(self, input_data: ReportInput, *, depth: int = 2) -> str:
+        return self.build_result(input_data, depth=depth).to_markdown()
+
+    def save_result(self, result: GraphRAGResult, output_dir: Path | str) -> Path:
+        output_path = _next_output_path(Path(output_dir), "rag")
+        output_path.write_text(result.to_markdown(), encoding="utf-8")
+        return output_path
