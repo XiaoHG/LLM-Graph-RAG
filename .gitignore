@@ -10,4 +10,8 @@ references/
 neo4j/
 AGENTS.md
 output/
+tmp/
+versions/
+.vscode/
+.agents/
 

@@ -20,6 +20,12 @@ def _require_list(value: Any, field_name: str) -> list[Any]:
     return value
 
 
+def _require_bool(value: Any, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a boolean")
+    return value
+
+
 def _require_str(value: Any, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise TypeError(f"{field_name} must be a non-empty string")
@@ -32,6 +38,19 @@ def _require_float(value: Any, field_name: str) -> float:
     return float(value)
 
 
+def _require_exact_keys(data: Mapping[str, Any], field_name: str, expected: set[str]) -> None:
+    actual = set(data.keys())
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        details = []
+        if missing:
+            details.append(f"missing keys: {missing}")
+        if extra:
+            details.append(f"extra keys: {extra}")
+        raise TypeError(f"{field_name} must contain exact keys; " + "; ".join(details))
+
+
 @dataclass(frozen=True)
 class FeatureDetail:
     feat_name: str
@@ -42,12 +61,23 @@ class FeatureDetail:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "FeatureDetail":
+        _require_exact_keys(
+            data,
+            "feature_detail item",
+            {
+                "feat_name",
+                "model_prob",
+                "evidence_level",
+                "is_counter_evidence",
+                "is_legal_for_site",
+            },
+        )
         return cls(
             feat_name=_require_str(data.get("feat_name"), "feat_name"),
             model_prob=_require_float(data.get("model_prob"), "model_prob"),
             evidence_level=_require_str(data.get("evidence_level"), "evidence_level"),
-            is_counter_evidence=bool(data.get("is_counter_evidence")),
-            is_legal_for_site=bool(data.get("is_legal_for_site")),
+            is_counter_evidence=_require_bool(data.get("is_counter_evidence"), "is_counter_evidence"),
+            is_legal_for_site=_require_bool(data.get("is_legal_for_site"), "is_legal_for_site"),
         )
 
 
@@ -59,6 +89,7 @@ class RiskSummary:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "RiskSummary":
+        _require_exact_keys(data, "risk summary", {"score", "level", "basis"})
         return cls(
             score=_require_float(data.get("score"), "score"),
             level=_require_str(data.get("level"), "level"),
@@ -73,6 +104,7 @@ class ExclusionSummary:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "ExclusionSummary":
+        _require_exact_keys(data, "exclusion", {"excluded_diseases", "remaining_differential"})
         return cls(
             excluded_diseases=[
                 _require_str(item, "excluded_diseases item")
@@ -95,6 +127,11 @@ class UncertaintySummary:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "UncertaintySummary":
+        _require_exact_keys(
+            data,
+            "uncertainty",
+            {"total_score", "level", "perception_score", "cognitive_score", "reasons"},
+        )
         return cls(
             total_score=_require_float(data.get("total_score"), "total_score"),
             level=_require_str(data.get("level"), "level"),
@@ -119,6 +156,21 @@ class ReportInput:
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "ReportInput":
         mapping = _require_mapping(data, "input")
+        _require_exact_keys(
+            mapping,
+            "input",
+            {
+                "anatomy_site",
+                "site_confidence",
+                "feature_detail",
+                "image_risk",
+                "exposure_risk",
+                "total_risk",
+                "exclusion",
+                "missing_evidence",
+                "uncertainty",
+            },
+        )
         return cls(
             anatomy_site=_require_str(mapping.get("anatomy_site"), "anatomy_site"),
             site_confidence=_require_float(mapping.get("site_confidence"), "site_confidence"),

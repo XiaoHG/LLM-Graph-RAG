@@ -133,3 +133,17 @@ def test_cli_uses_default_output_name(monkeypatch, tmp_path):
     assert code == 0
     assert (output_dir / "report_002.json").exists()
     assert (output_dir / "report_002.md").read_text(encoding="utf-8") == "报告正文"
+def test_real_input_example_contains_three_features():
+    parsed = ReportInput.from_json_file(str(ROOT / "test_data" / "input_example.json"))
+    assert len(parsed.feature_detail) == 3
+
+
+def test_input_rejects_unknown_fields():
+    payload = sample_input()
+    payload["unexpected"] = "value"
+    try:
+        ReportInput.from_mapping(payload)
+    except TypeError as exc:
+        assert "extra keys" in str(exc)
+    else:
+        raise AssertionError("expected TypeError")
